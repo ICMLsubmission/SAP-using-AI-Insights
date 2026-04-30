@@ -10,7 +10,7 @@ import pandas as pd
 import os
 
 # Import core functions
-from sap_design_final_core import (
+from sap_design_core import (
     extract_text_from_document,
     parse_sap_with_llm,
     create_intelligence_table,
