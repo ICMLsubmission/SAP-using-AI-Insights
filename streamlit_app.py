@@ -7,6 +7,7 @@ import streamlit as st
 import json
 from datetime import datetime
 import pandas as pd
+import plotly.graph_objects as go
 
 from sap_design_core import (
     extract_text_from_document,
@@ -67,7 +68,7 @@ st.markdown("""
 
 # ==================== SIDEBAR ====================
 with st.sidebar:
-    st.markdown("# 🔬 SAP Design by AI Insights")
+    st.markdown("# 🧠 AI Powered SAP Design")
     st.markdown("""
     ### Vision
     Make new drug trial designs more **informed and evidence-driven** 
@@ -100,7 +101,7 @@ if 'solara_input' not in st.session_state:
     st.session_state.solara_input = {}
 
 # ==================== HEADER ====================
-st.markdown("# 🔬 SAP Design by AI Insights")
+st.markdown("# 🧠 AI Powered SAP Design")
 st.markdown("**Build trial designs informed by historical evidence, not from scratch**")
 st.markdown("---")
 
@@ -210,7 +211,9 @@ if st.session_state.selected_indication:
         rr = st.session_state.landscape.get("response_rate", {})
         ors = st.session_state.landscape.get("effect_size_or", {})
         ss = st.session_state.landscape.get("sample_size", {})
+        trials = st.session_state.landscape.get("trials", [])
         
+        # METRICS CARDS
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -239,6 +242,182 @@ if st.session_state.selected_indication:
             <div>Range: {int(ss.get('min', 0))}-{int(ss.get('max', 0))}</div>
             </div>
             """, unsafe_allow_html=True)
+        
+        # ==================== VISUALIZATIONS ====================
+        st.markdown("### Visual Analysis of Historical Trials")
+        
+        # Extract data for plots
+        rr_values = [t.get("rr", 0) * 100 for t in trials if t.get("rr")]
+        or_values = [t.get("or", 0) for t in trials if t.get("or")]
+        trial_ids = [t.get("id", "") for t in trials]
+        
+        # Create tabs for different visualizations
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Response Rate Distribution",
+            "📈 Effect Size Distribution", 
+            "🔗 RR vs OR Relationship",
+            "📋 Trial Summary"
+        ])
+        
+        # ========== TAB 1: Response Rate Histogram ==========
+        with tab1:
+            st.markdown(f"**Response Rate Histogram** - Distribution across {len(rr_values)} {st.session_state.selected_indication} trials")
+            
+            if rr_values:
+                fig_rr = go.Figure()
+                fig_rr.add_trace(go.Histogram(
+                    x=rr_values,
+                    nbinsx=max(3, len(rr_values) // 2),
+                    marker_color='#3498db',
+                    name='Response Rate %',
+                    showlegend=False,
+                    hovertemplate='<b>RR Range</b>: %{x:.0f}%<br><b>Count</b>: %{y}<extra></extra>'
+                ))
+                fig_rr.add_vline(
+                    x=rr.get('mean', 0) * 100,
+                    line_dash="dash",
+                    line_color="red",
+                    line_width=2,
+                    annotation_text=f"Mean: {rr.get('mean', 0)*100:.0f}%",
+                    annotation_position="top right"
+                )
+                fig_rr.update_layout(
+                    title=f"Response Rate Distribution - {st.session_state.selected_indication}",
+                    xaxis_title="Response Rate (%)",
+                    yaxis_title="Number of Trials",
+                    template="plotly_white",
+                    height=450,
+                    showlegend=False
+                )
+                st.plotly_chart(fig_rr, use_container_width=True)
+                
+                st.markdown(f"""
+                **Key Insights:**
+                - **Mean RR:** {rr.get('mean', 0)*100:.0f}% (use this for base case)
+                - **Median RR:** {rr.get('median', 0)*100:.0f}%
+                - **Range:** {rr.get('min', 0)*100:.0f}% - {rr.get('max', 0)*100:.0f}%
+                - **Spread:** Indicates variability in trial outcomes
+                """)
+        
+        # ========== TAB 2: Effect Size Histogram ==========
+        with tab2:
+            st.markdown(f"**Effect Size (OR) Histogram** - Distribution across {len(or_values)} {st.session_state.selected_indication} trials")
+            
+            if or_values:
+                fig_or = go.Figure()
+                fig_or.add_trace(go.Histogram(
+                    x=or_values,
+                    nbinsx=max(3, len(or_values) // 2),
+                    marker_color='#2ecc71',
+                    name='Odds Ratio',
+                    showlegend=False,
+                    hovertemplate='<b>OR Range</b>: %{x:.2f}<br><b>Count</b>: %{y}<extra></extra>'
+                ))
+                fig_or.add_vline(
+                    x=ors.get('mean', 0),
+                    line_dash="dash",
+                    line_color="red",
+                    line_width=2,
+                    annotation_text=f"Mean: {ors.get('mean', 0):.2f}",
+                    annotation_position="top right"
+                )
+                fig_or.update_layout(
+                    title=f"Effect Size (OR) Distribution - {st.session_state.selected_indication}",
+                    xaxis_title="Odds Ratio (OR)",
+                    yaxis_title="Number of Trials",
+                    template="plotly_white",
+                    height=450,
+                    showlegend=False
+                )
+                st.plotly_chart(fig_or, use_container_width=True)
+                
+                st.markdown(f"""
+                **Key Insights:**
+                - **Mean OR:** {ors.get('mean', 0):.2f}x (drug is {ors.get('mean', 0):.2f}x better than control)
+                - **Median OR:** {ors.get('median', 0):.2f}
+                - **Range:** {ors.get('min', 0):.2f} - {ors.get('max', 0):.2f}
+                - **Consistency:** Tighter distribution = more predictable effect
+                """)
+        
+        # ========== TAB 3: RR vs OR Scatter Plot ==========
+        with tab3:
+            st.markdown(f"**RR vs OR Relationship** - How response rate relates to effect size")
+            
+            if rr_values and or_values:
+                fig_scatter = go.Figure()
+                
+                fig_scatter.add_trace(go.Scatter(
+                    x=rr_values,
+                    y=or_values,
+                    mode='markers+text',
+                    marker=dict(
+                        size=12,
+                        color='#667eea',
+                        opacity=0.7,
+                        line=dict(color='#764ba2', width=2)
+                    ),
+                    text=trial_ids,
+                    textposition='top center',
+                    textfont=dict(size=10),
+                    hovertemplate='<b>%{text}</b><br>RR: %{x:.0f}%<br>OR: %{y:.2f}<extra></extra>',
+                    showlegend=False
+                ))
+                
+                # Add mean lines
+                fig_scatter.add_vline(
+                    x=rr.get('mean', 0) * 100,
+                    line_dash="dash",
+                    line_color="rgba(255, 0, 0, 0.3)",
+                    annotation_text="Mean RR"
+                )
+                fig_scatter.add_hline(
+                    y=ors.get('mean', 0),
+                    line_dash="dash",
+                    line_color="rgba(255, 0, 0, 0.3)",
+                    annotation_text="Mean OR"
+                )
+                
+                fig_scatter.update_layout(
+                    title=f"Response Rate vs Effect Size - {st.session_state.selected_indication}",
+                    xaxis_title="Response Rate (%)",
+                    yaxis_title="Odds Ratio (OR)",
+                    template="plotly_white",
+                    height=450,
+                    hovermode='closest'
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+                
+                st.markdown(f"""
+                **Key Insights:**
+                - **Pattern:** Shows if high RR trials also have high OR
+                - **Outliers:** Trials far from the cluster may have special characteristics
+                - **Correlation:** Helps understand assumption relationships
+                - **New Drug Design:** Expect similar RR-OR relationship
+                """)
+        
+        # ========== TAB 4: Trial Summary Table ==========
+        with tab4:
+            st.markdown(f"**Trial Summary Table** - All {len(trials)} {st.session_state.selected_indication} trials")
+            
+            if trials:
+                # Create DataFrame
+                summary_df = pd.DataFrame([
+                    {
+                        "Trial ID": t.get("id", ""),
+                        "Response Rate (%)": f"{t.get('rr', 0)*100:.0f}%",
+                        "Effect Size (OR)": f"{t.get('or', 0):.2f}"
+                    }
+                    for t in trials
+                ])
+                
+                st.dataframe(summary_df, use_container_width=True, hide_index=True)
+                
+                st.markdown(f"""
+                **Legend:**
+                - **Trial ID:** Identifier of the historical trial
+                - **Response Rate (%):** Percentage of patients who responded to treatment
+                - **Effect Size (OR):** How much better the drug is vs control (1.0 = no difference)
+                """)
 
 st.markdown("---")
 
@@ -343,5 +522,5 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 st.markdown("---")
 st.markdown("""
-**SAP Design by AI Insights** | Make designs evidence-driven, not guesswork
+**🧠 AI Powered SAP Design** | Make designs evidence-driven, not guesswork
 """)
